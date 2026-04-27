@@ -2,7 +2,7 @@
 
 A Cinnamon panel applet for Linux Mint that displays the Logitech A20 X wireless headset battery percentage.
 
-![Panel showing headset icon and battery percentage]
+![Panel showing headset icon and battery percentage](assets/applet.png)
 
 ## Requirements
 
