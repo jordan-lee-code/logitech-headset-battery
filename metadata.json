@@ -1,0 +1,7 @@
+{
+    "uuid": "logitech-headset-battery@local",
+    "name": "Logitech Headset Battery",
+    "description": "Shows Logitech A20 X wireless headset battery percentage via HID++ 2.0",
+    "version": "1.0.0",
+    "author": "jordan"
+}
