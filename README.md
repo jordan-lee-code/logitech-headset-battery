@@ -34,6 +34,10 @@ Finally, enable the applet: **right-click the panel → Applets → Logitech Hea
 - Updates every 20 minutes, or click the applet to refresh immediately
 - The first reading appears after the headset connects to the dongle — if the panel shows `--` on first load, wait a few seconds and click to refresh
 
+## License
+
+MIT
+
 ## How it works
 
 The A20 X dongle exposes a firmware debug log via a HID feature report. Battery level is logged after each BLE connection between the dongle and headset. `battery_reader.py` reads this log passively (no commands sent to the dongle) and caches the last known value for up to 2 hours to handle stable sessions.
