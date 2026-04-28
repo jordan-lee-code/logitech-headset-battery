@@ -18,8 +18,8 @@ import time
 
 VENDOR_ID = "046d"
 PRODUCT_ID = "0b35"
-CACHE_FILE = "/tmp/.a20x_battery_cache"
-CACHE_MAX_AGE_SECS = 7200  # show cached value for up to 2 hours
+CACHE_FILE = os.path.expanduser("~/.cache/a20x_battery_cache")
+CACHE_MAX_AGE_SECS = 86400  # show cached value for up to 24 hours
 
 
 def HIDIOCGFEATURE(n):
@@ -85,10 +85,10 @@ def load_cache():
             data = json.load(f)
         age = time.time() - data.get("ts", 0)
         if age < CACHE_MAX_AGE_SECS:
-            return data.get("pct"), data.get("charging")
+            return data.get("pct"), data.get("charging"), int(age)
     except Exception:
         pass
-    return None, None
+    return None, None, 0
 
 
 def save_cache(pct, charging):
@@ -123,10 +123,10 @@ def main():
         print(pct)
         return
 
-    # No fresh data — fall back to cache
-    cached_pct, _ = load_cache()
+    # No fresh data — fall back to cache; output "PCT age_secs" so applet can show staleness
+    cached_pct, _, age_secs = load_cache()
     if cached_pct is not None:
-        print(cached_pct)
+        print(f"{cached_pct} {age_secs}")
         return
 
     print("ERROR: No battery data (re-plug dongle for first reading)")

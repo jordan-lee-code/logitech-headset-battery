@@ -4,7 +4,7 @@ const Gio = imports.gi.Gio;
 const St = imports.gi.St;
 
 const UUID = "logitech-headset-battery@local";
-const UPDATE_INTERVAL_SECS = 1200; // 20 minutes
+const UPDATE_INTERVAL_SECS = 60; // 1 minute
 
 const COLOR_GOOD = "battery-good";
 const COLOR_WARN = "battery-warn";
@@ -68,7 +68,11 @@ LogitechBatteryApplet.prototype = {
             return;
         }
 
-        let level = parseInt(output, 10);
+        // Output is either "PCT" (fresh) or "PCT AGE_SECS" (cached)
+        const parts = output.split(" ");
+        let level = parseInt(parts[0], 10);
+        const ageSecs = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+
         if (isNaN(level) || level < 0 || level > 100) {
             this._label.set_text("?");
             this._setColor(COLOR_UNKNOWN);
@@ -77,7 +81,6 @@ LogitechBatteryApplet.prototype = {
         }
 
         this._label.set_text(level + "%");
-        this._lastUpdate = GLib.DateTime.new_now_local();
 
         if (level > 50) {
             this._setColor(COLOR_GOOD);
@@ -87,10 +90,18 @@ LogitechBatteryApplet.prototype = {
             this._setColor(COLOR_CRITICAL);
         }
 
-        const timeStr = this._lastUpdate.format("%H:%M:%S");
+        let ageStr;
+        if (ageSecs < 60) {
+            ageStr = "just now";
+        } else if (ageSecs < 3600) {
+            ageStr = Math.floor(ageSecs / 60) + " min ago";
+        } else {
+            ageStr = Math.floor(ageSecs / 3600) + " hr ago";
+        }
+
         this.set_applet_tooltip(
             "Logitech A20 X battery: " + level + "%\n" +
-            "Last update: " + timeStr + "\n" +
+            "Reading: " + ageStr + "\n" +
             "(Click to refresh)"
         );
     },
