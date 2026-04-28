@@ -1,2 +1,3 @@
-# Allow logged-in user to access the Logitech A20 X wireless dongle hidraw device
+# Allow logged-in user to access the Logitech A20 X hidraw devices
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0b35", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0b2e", GROUP="plugdev", MODE="0660"

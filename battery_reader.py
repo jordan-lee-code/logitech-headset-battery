@@ -17,6 +17,7 @@ import time
 
 VENDOR_ID = "046d"
 PRODUCT_ID = "0b35"
+PRODUCT_ID_WIRED = "0b2e"
 CACHE_FILE = os.path.expanduser("~/.cache/a20x_battery_cache")
 CACHE_MAX_AGE_SECS = 604800  # 7 days
 
@@ -25,12 +26,12 @@ def HIDIOCGFEATURE(n):
     return (3 << 30) | (ord("H") << 8) | 0x07 | (n << 16)
 
 
-def find_hidraw():
+def find_hidraw(product_id=PRODUCT_ID):
     for uevent in sorted(glob.glob("/sys/class/hidraw/hidraw*/device/uevent")):
         try:
             with open(uevent) as f:
                 content = f.read().upper()
-            if VENDOR_ID.upper() in content and PRODUCT_ID.upper() in content:
+            if VENDOR_ID.upper() in content and product_id.upper() in content:
                 dev = os.path.basename(os.path.dirname(os.path.dirname(uevent)))
                 return f"/dev/{dev}"
         except OSError:
@@ -123,6 +124,19 @@ def save_cache(pct, charging):
         pass
 
 
+def is_wired_charging():
+    """Return True if the wired USB device is present and accessible (cable plugged in)."""
+    wired_path = find_hidraw(PRODUCT_ID_WIRED)
+    if not wired_path:
+        return False
+    try:
+        fd = os.open(wired_path, os.O_RDWR)
+        os.close(fd)
+        return True
+    except OSError:
+        return False
+
+
 def main():
     path = find_hidraw()
     if not path:
@@ -142,9 +156,13 @@ def main():
 
     pct, charging, ble_connected = parse_log(log_data)
 
+    # Wired USB presence overrides the charging flag from the log/cache
+    wired = is_wired_charging()
+
     if pct is not None:
-        save_cache(pct, charging)
-        print(f"{pct} 0 {1 if charging else 0}")
+        effective_charging = wired or charging
+        save_cache(pct, effective_charging)
+        print(f"{pct} 0 {1 if effective_charging else 0}")
         return
 
     if ble_connected is False:
@@ -155,7 +173,8 @@ def main():
     # No fresh data — fall back to cache
     cached_pct, cached_charging, age_secs = load_cache()
     if cached_pct is not None:
-        print(f"{cached_pct} {age_secs} {1 if cached_charging else 0}")
+        effective_charging = wired or cached_charging
+        print(f"{cached_pct} {age_secs} {1 if effective_charging else 0}")
         return
 
     print("ERROR: No data — turn headset off/on to get first reading")
