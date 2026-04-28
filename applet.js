@@ -4,7 +4,8 @@ const Gio = imports.gi.Gio;
 const St = imports.gi.St;
 
 const UUID = "logitech-headset-battery@local";
-const UPDATE_INTERVAL_SECS = 60; // 1 minute
+const UPDATE_INTERVAL_SECS = 60;
+const LOW_BATTERY_THRESHOLD = 20;
 
 const COLOR_GOOD = "battery-good";
 const COLOR_WARN = "battery-warn";
@@ -23,7 +24,7 @@ LogitechBatteryApplet.prototype = {
 
         this._scriptPath = metadata.path + "/battery_reader.py";
         this._timer = 0;
-        this._lastUpdate = null;
+        this._lastBatteryLevel = null;
 
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
 
@@ -58,20 +59,43 @@ LogitechBatteryApplet.prototype = {
         this._label.add_style_class_name(colorClass);
     },
 
+    _notifyLowBattery: function(level) {
+        if (this._lastBatteryLevel !== null &&
+            this._lastBatteryLevel > LOW_BATTERY_THRESHOLD &&
+            level <= LOW_BATTERY_THRESHOLD) {
+            GLib.spawn_command_line_async(
+                'notify-send -u critical -i battery-caution ' +
+                '"Headset Battery Low" ' +
+                '"Logitech A20 X is at ' + level + '% — plug in soon"'
+            );
+        }
+        this._lastBatteryLevel = level;
+    },
+
     _updateDisplay: function(output) {
         output = output.trim();
 
         if (!output || output.startsWith("ERROR")) {
             this._label.set_text("N/A");
             this._setColor(COLOR_UNKNOWN);
+            this._icon.set_icon_name("audio-headphones-symbolic");
             this.set_applet_tooltip(output || "No output from battery reader");
             return;
         }
 
-        // Output is either "PCT" (fresh) or "PCT AGE_SECS" (cached)
+        if (output === "DISCONNECTED") {
+            this._label.set_text("--");
+            this._setColor(COLOR_UNKNOWN);
+            this._icon.set_icon_name("audio-headphones-symbolic");
+            this.set_applet_tooltip("Headset disconnected\n(Click to refresh)");
+            return;
+        }
+
+        // Format: PCT AGE_SECS CHARGING
         const parts = output.split(" ");
-        let level = parseInt(parts[0], 10);
+        const level = parseInt(parts[0], 10);
         const ageSecs = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+        const charging = parts.length > 2 && parts[2] === "1";
 
         if (isNaN(level) || level < 0 || level > 100) {
             this._label.set_text("?");
@@ -80,11 +104,16 @@ LogitechBatteryApplet.prototype = {
             return;
         }
 
-        this._label.set_text(level + "%");
+        this._notifyLowBattery(level);
 
-        if (level > 50) {
+        const chargeSymbol = charging ? " ⚡" : "";
+        this._label.set_text(level + "%" + chargeSymbol);
+
+        if (charging) {
             this._setColor(COLOR_GOOD);
-        } else if (level > 20) {
+        } else if (level > 50) {
+            this._setColor(COLOR_GOOD);
+        } else if (level > LOW_BATTERY_THRESHOLD) {
             this._setColor(COLOR_WARN);
         } else {
             this._setColor(COLOR_CRITICAL);
@@ -99,8 +128,9 @@ LogitechBatteryApplet.prototype = {
             ageStr = Math.floor(ageSecs / 3600) + " hr ago";
         }
 
+        const chargingStr = charging ? "charging" : "on battery";
         this.set_applet_tooltip(
-            "Logitech A20 X battery: " + level + "%\n" +
+            "Logitech A20 X: " + level + "% (" + chargingStr + ")\n" +
             "Reading: " + ageStr + "\n" +
             "(Click to refresh)"
         );

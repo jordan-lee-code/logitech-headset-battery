@@ -2,11 +2,10 @@
 """
 Read Logitech A20 X headset battery via HID feature report debug log.
 
-The dongle exposes a debug log ring buffer on report 0x07 (HIDIOCGFEATURE).
-Battery level appears as the pattern: 05 5d 03 00 03 [pct%] [status]
-after each BLE connection event. We read the log passively (no disruptive
-commands) and cache the last known value to handle stable sessions where
-the BLE doesn't reconnect.
+Output:
+  PCT AGE_SECS CHARGING   — reading (AGE_SECS=0 if fresh, CHARGING=1 if on charge)
+  DISCONNECTED            — headset BLE explicitly disconnected
+  ERROR: reason           — dongle missing, permission denied, etc.
 """
 
 import fcntl
@@ -19,7 +18,7 @@ import time
 VENDOR_ID = "046d"
 PRODUCT_ID = "0b35"
 CACHE_FILE = os.path.expanduser("~/.cache/a20x_battery_cache")
-CACHE_MAX_AGE_SECS = 604800  # 7 days — stale data beats N/A for a slow-changing value
+CACHE_MAX_AGE_SECS = 604800  # 7 days
 
 
 def HIDIOCGFEATURE(n):
@@ -40,7 +39,6 @@ def find_hidraw():
 
 
 def read_log_chunks(fd, max_reads=30):
-    """Drain all available log data from the ring buffer."""
     all_data = bytearray()
     seen = set()
     for _ in range(max_reads):
@@ -50,7 +48,7 @@ def read_log_chunks(fd, max_reads=30):
         valid_len = buf[1]
         if valid_len == 0:
             break
-        chunk = bytes(buf[3 : 3 + valid_len])
+        chunk = bytes(buf[3:3 + valid_len])
         if chunk in seen:
             break
         seen.add(chunk)
@@ -58,34 +56,59 @@ def read_log_chunks(fd, max_reads=30):
     return bytes(all_data)
 
 
-def find_battery(data):
+def parse_log(data):
     """
-    Scan for battery entry pattern in the log data.
-    Pattern: 05 5d 03 00 03 [pct] [status]
-    Returns (pct, charging_bool) or (None, None).
+    Walk log entries in order. Entry format: 05 [type] [len] 00 [len bytes].
+    Returns (pct, charging, ble_connected) reflecting the most recent events seen.
+    ble_connected is True/False if we saw a connect/disconnect; None if no BLE event.
     """
-    # Walk backwards so we get the most recent entry
-    for i in range(len(data) - 6, -1, -1):
-        if (
-            data[i] == 0x05
-            and data[i + 1] == 0x5D
-            and data[i + 2] == 0x03
-            and data[i + 3] == 0x00
-            and data[i + 4] == 0x03
-        ):
-            pct = data[i + 5]
-            charging = data[i + 6] == 0x00
-            return pct, charging
-    return None, None
+    pct = None
+    charging = None
+    ble_connected = None
+
+    i = 0
+    while i < len(data) - 4:
+        if data[i] != 0x05:
+            i += 1
+            continue
+
+        entry_type = data[i + 1]
+        entry_len = data[i + 2]
+        # data[i+3] is always 0x00 (padding/separator)
+
+        if entry_len == 0 or i + 4 + entry_len > len(data):
+            i += 1
+            continue
+
+        payload = data[i + 4: i + 4 + entry_len]
+
+        if entry_type == 0x5D:
+            if entry_len >= 3 and payload[0] == 0x03:
+                # Battery notification: [0x03, pct, status]
+                pct = payload[1]
+                charging = (payload[2] == 0x00)
+                ble_connected = True  # battery implies connected
+            elif entry_len >= 2 and payload[0] == 0x92 and payload[1] == 0x0F:
+                # Text log entry
+                text = payload[2:].decode("ascii", errors="ignore")
+                if "LE connected" in text:
+                    ble_connected = True
+                elif "LE disconnected" in text:
+                    ble_connected = False
+                    pct = None  # discard any battery from before disconnect
+
+        i += 4 + entry_len
+
+    return pct, charging, ble_connected
 
 
 def load_cache():
     try:
         with open(CACHE_FILE) as f:
             data = json.load(f)
-        age = time.time() - data.get("ts", 0)
+        age = int(time.time() - data.get("ts", 0))
         if age < CACHE_MAX_AGE_SECS:
-            return data.get("pct"), data.get("charging"), int(age)
+            return data.get("pct"), data.get("charging", False), age
     except Exception:
         pass
     return None, None, 0
@@ -93,6 +116,7 @@ def load_cache():
 
 def save_cache(pct, charging):
     try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
         with open(CACHE_FILE, "w") as f:
             json.dump({"pct": pct, "charging": charging, "ts": time.time()}, f)
     except Exception:
@@ -116,20 +140,25 @@ def main():
     finally:
         os.close(fd)
 
-    pct, charging = find_battery(log_data)
+    pct, charging, ble_connected = parse_log(log_data)
 
     if pct is not None:
         save_cache(pct, charging)
-        print(pct)
+        print(f"{pct} 0 {1 if charging else 0}")
         return
 
-    # No fresh data — fall back to cache; output "PCT age_secs" so applet can show staleness
-    cached_pct, _, age_secs = load_cache()
+    if ble_connected is False:
+        # Explicit disconnect seen in log with no subsequent reconnect
+        print("DISCONNECTED")
+        return
+
+    # No fresh data — fall back to cache
+    cached_pct, cached_charging, age_secs = load_cache()
     if cached_pct is not None:
-        print(f"{cached_pct} {age_secs}")
+        print(f"{cached_pct} {age_secs} {1 if cached_charging else 0}")
         return
 
-    print("ERROR: No battery data (re-plug dongle for first reading)")
+    print("ERROR: No data — turn headset off/on to get first reading")
     sys.exit(1)
 
 
