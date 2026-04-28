@@ -110,10 +110,10 @@ def load_cache():
             data = json.load(f)
         age = int(time.time() - data.get("ts", 0))
         if age < CACHE_MAX_AGE_SECS:
-            return data.get("pct"), data.get("charging", False), age
+            return data.get("pct"), data.get("charging", False), age, data.get("disconnected", False)
     except Exception:
         pass
-    return None, None, 0
+    return None, None, 0, False
 
 
 def save_cache(pct, charging):
@@ -121,6 +121,15 @@ def save_cache(pct, charging):
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
         with open(CACHE_FILE, "w") as f:
             json.dump({"pct": pct, "charging": charging, "ts": time.time()}, f)
+    except Exception:
+        pass
+
+
+def save_disconnected():
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            json.dump({"disconnected": True, "ts": time.time()}, f)
     except Exception:
         pass
 
@@ -200,11 +209,15 @@ def main():
 
     if ble_connected is False:
         # Explicit disconnect seen in log with no subsequent reconnect
+        save_disconnected()
         print("DISCONNECTED")
         return
 
     # No fresh data — fall back to cache
-    cached_pct, cached_charging, age_secs = load_cache()
+    cached_pct, cached_charging, age_secs, cached_disconnected = load_cache()
+    if cached_disconnected:
+        print("DISCONNECTED")
+        return
     if cached_pct is not None:
         effective_charging = wired or cached_charging
         print(f"{cached_pct} {age_secs} {1 if effective_charging else 0}")

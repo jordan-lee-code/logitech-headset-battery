@@ -84,10 +84,10 @@ LogitechBatteryApplet.prototype = {
         }
 
         if (output === "DISCONNECTED") {
-            this._label.set_text("--");
+            this._label.set_text("off");
             this._setColor(COLOR_UNKNOWN);
             this._icon.set_icon_name("audio-headphones-symbolic");
-            this.set_applet_tooltip("Headset disconnected\n(Click to refresh)");
+            this.set_applet_tooltip("Headset off or out of range\n(Click to refresh)");
             return;
         }
 
