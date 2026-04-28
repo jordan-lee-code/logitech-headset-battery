@@ -59,8 +59,9 @@ LogitechBatteryApplet.prototype = {
         this._label.add_style_class_name(colorClass);
     },
 
-    _notifyLowBattery: function(level) {
-        if (this._lastBatteryLevel !== null &&
+    _notifyLowBattery: function(level, charging) {
+        if (!charging &&
+            this._lastBatteryLevel !== null &&
             this._lastBatteryLevel > LOW_BATTERY_THRESHOLD &&
             level <= LOW_BATTERY_THRESHOLD) {
             GLib.spawn_command_line_async(
@@ -104,7 +105,7 @@ LogitechBatteryApplet.prototype = {
             return;
         }
 
-        this._notifyLowBattery(level);
+        this._notifyLowBattery(level, charging);
 
         this._label.set_text(charging ? "⚡" : level + "%");
 
