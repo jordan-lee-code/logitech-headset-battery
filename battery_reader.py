@@ -215,12 +215,17 @@ def main():
 
     # No fresh data — fall back to cache
     cached_pct, cached_charging, age_secs, cached_disconnected = load_cache()
-    if cached_disconnected:
+    if cached_disconnected and not wired:
         print("DISCONNECTED")
         return
     if cached_pct is not None:
         effective_charging = wired or cached_charging
         print(f"{cached_pct} {age_secs} {1 if effective_charging else 0}")
+        return
+    if wired:
+        # Cable in but no battery reading yet — pct unknown, charging certain
+        # Applet hides the percentage when charging so 0 is never displayed
+        print("0 0 1")
         return
 
     print("ERROR: No data — turn headset off/on to get first reading")
