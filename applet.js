@@ -4,7 +4,7 @@ const Gio = imports.gi.Gio;
 const St = imports.gi.St;
 
 const UUID = "logitech-headset-battery@local";
-const UPDATE_INTERVAL_SECS = 60;
+const UPDATE_INTERVAL_SECS = 5;
 const LOW_BATTERY_THRESHOLD = 20;
 
 const COLOR_GOOD = "battery-good";
