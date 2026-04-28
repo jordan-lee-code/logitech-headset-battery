@@ -8,6 +8,7 @@ Output:
   ERROR: reason           — dongle missing, permission denied, etc.
 """
 
+import argparse
 import fcntl
 import glob
 import json
@@ -138,6 +139,10 @@ def is_wired_charging():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true", help="Print raw log bytes and parsed events")
+    args = parser.parse_args()
+
     path = find_hidraw()
     if not path:
         print("ERROR: A20 X dongle not found")
@@ -149,15 +154,43 @@ def main():
         print("ERROR: Permission denied")
         sys.exit(1)
 
+    wired = is_wired_charging()
+    if args.debug:
+        print(f"[debug] wired={wired}", file=sys.stderr)
+
     try:
         log_data = read_log_chunks(fd)
+        if args.debug:
+            print(f"[debug] dongle log ({len(log_data)} bytes): {log_data.hex()}", file=sys.stderr)
+        pct, charging, ble_connected = parse_log(log_data)
+        if args.debug:
+            print(f"[debug] dongle parse: pct={pct} charging={charging} ble_connected={ble_connected}", file=sys.stderr)
+
+        # Approach 1: probe the wired USB device's own log buffer (read-only, no side effects)
+        if pct is None and wired:
+            wired_path = find_hidraw(PRODUCT_ID_WIRED)
+            if args.debug:
+                print(f"[debug] probing wired device {wired_path}", file=sys.stderr)
+            try:
+                wfd = os.open(wired_path, os.O_RDWR)
+                try:
+                    wired_log = read_log_chunks(wfd)
+                finally:
+                    os.close(wfd)
+                if args.debug:
+                    print(f"[debug] wired log ({len(wired_log)} bytes): {wired_log.hex()}", file=sys.stderr)
+                if wired_log:
+                    p, c, _ = parse_log(wired_log)
+                    if args.debug:
+                        print(f"[debug] wired parse: pct={p} charging={c}", file=sys.stderr)
+                    if p is not None:
+                        pct, charging = p, True
+            except OSError as e:
+                if args.debug:
+                    print(f"[debug] wired open failed: {e}", file=sys.stderr)
+
     finally:
         os.close(fd)
-
-    pct, charging, ble_connected = parse_log(log_data)
-
-    # Wired USB presence overrides the charging flag from the log/cache
-    wired = is_wired_charging()
 
     if pct is not None:
         effective_charging = wired or charging

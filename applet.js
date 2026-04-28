@@ -106,8 +106,7 @@ LogitechBatteryApplet.prototype = {
 
         this._notifyLowBattery(level);
 
-        const chargeSymbol = charging ? " ⚡" : "";
-        this._label.set_text(level + "%" + chargeSymbol);
+        this._label.set_text(charging ? "⚡" : level + "%");
 
         if (charging) {
             this._setColor(COLOR_GOOD);
