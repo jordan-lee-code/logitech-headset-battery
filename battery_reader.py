@@ -19,7 +19,7 @@ import time
 VENDOR_ID = "046d"
 PRODUCT_ID = "0b35"
 CACHE_FILE = os.path.expanduser("~/.cache/a20x_battery_cache")
-CACHE_MAX_AGE_SECS = 86400  # show cached value for up to 24 hours
+CACHE_MAX_AGE_SECS = 604800  # 7 days — stale data beats N/A for a slow-changing value
 
 
 def HIDIOCGFEATURE(n):
